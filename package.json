@@ -1,0 +1,67 @@
+{
+  "name": "@cyco77/pptb-ownership-mover",
+  "version": "0.1.0",
+  "displayName": "Ownership Mover",
+  "description": "A Power Platform Toolbox tool to move ownership of records easily.",
+  "main": "index.html",
+  "author": "Lars Hildebrandt",
+  "contributors": [
+    {
+      "name": "Lars Hildebrandt",
+      "url": "https://github.com/cyco77"
+    }
+  ],
+  "configurations": {
+    "repository": "https://github.com/cyco77/pptb-ownership-mover",
+    "website": "https://github.com/cyco77/pptb-ownership-mover",
+    "readmeUrl": "https://raw.githubusercontent.com/cyco77/pptb-ownership-mover/refs/heads/main/README.md"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyco77/pptb-ownership-mover.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cyco77/pptb-ownership-mover/issues"
+  },
+  "homepage": "https://github.com/cyco77/pptb-ownership-mover#readme",
+  "keywords": [
+    "power-platform",
+    "dynamics-365",
+    "plugin",
+    "documentation",
+    "pptb",
+    "toolbox"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc && vite build",
+    "dev": "vite",
+    "watch": "vite build --watch",
+    "preview": "vite preview",
+    "finalize-package": "npm shrinkwrap",
+    "release:patch": "npm version patch",
+    "release:minor": "npm version minor",
+    "release:major": "npm version major",
+    "release:publish": "npm publish"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@fluentui/react-components": "^9.72.7"
+  },
+  "devDependencies": {
+    "@pptb/types": "^1.2.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^7.1.11"
+  },
+  "files": [
+    "dist",
+    "npm-shrinkwrap.json"
+  ]
+}
