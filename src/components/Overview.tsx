@@ -180,6 +180,12 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
       targetOwnerType: OwnershipTargetType,
       targetOwnerId: string,
       selectedEntityLogicalNames: string[],
+      onProgress?: (progress: {
+        assignedRecords: number;
+        failedRecords: number;
+        totalRecords: number;
+        currentEntity: string;
+      }) => void,
     ): Promise<OwnershipAssignmentResult> => {
       const sourceSummary = ownershipResult?.users.find(
         (user) => user.userId === sourceOwnerId,
@@ -200,6 +206,7 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
         targetOwnerId,
         targetOwnerType,
         selectedEntityCounts,
+        onProgress,
       );
 
       await window.toolboxAPI.utils.showNotification({
@@ -207,13 +214,6 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
         body: `Reassigned ${assignmentResult.reassignedRecords} record(s). Failed: ${assignmentResult.failedRecords}.`,
         type: assignmentResult.failedRecords > 0 ? "warning" : "success",
       });
-
-      // Refresh analysis after reassignment to keep drawer data current.
-      const refreshedResult = await loadOwnershipCountsForOwners(
-        ownershipSourceIds,
-        setOwnershipProgress,
-      );
-      setOwnershipResult(refreshedResult);
 
       return assignmentResult;
     },
@@ -410,6 +410,11 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
                   ? (teams.find((team) => team.teamid === id)?.name ?? id)
                   : (systemUsers.find((user) => user.systemuserid === id)
                       ?.fullname ?? id),
+              userEmail:
+                ownershipSourceType === "systemuser"
+                  ? (systemUsers.find((user) => user.systemuserid === id)
+                      ?.domainname ?? undefined)
+                  : undefined,
             }))}
             onAssignRecords={handleAssignOwnership}
             onOpenChange={setIsOwnershipDrawerOpen}

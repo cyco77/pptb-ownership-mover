@@ -51,6 +51,14 @@ export type OwnershipAssignmentEntityResult = {
   entityDisplayName: string;
   reassignedRecords: number;
   failedRecords: number;
+  failedRecordDetails: Array<{ recordId: string; error: string }>;
+};
+
+export type OwnershipAssignmentProgress = {
+  assignedRecords: number;
+  failedRecords: number;
+  totalRecords: number;
+  currentEntity: string;
 };
 
 export type OwnershipAssignmentResult = {

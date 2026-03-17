@@ -30,11 +30,17 @@ import {
   Text,
   tokens,
 } from "@fluentui/react-components";
-import { DismissRegular } from "@fluentui/react-icons";
+import {
+  DismissRegular,
+  CheckmarkCircleRegular,
+  ErrorCircleRegular,
+  DatabaseSearchRegular,
+} from "@fluentui/react-icons";
 import {
   OwnershipAssignmentResult,
   OwnershipAnalysisProgress,
   OwnershipAnalysisResult,
+  OwnershipAssignmentProgress,
   OwnershipTargetType,
 } from "../types/ownership";
 
@@ -58,6 +64,7 @@ interface IOwnershipResultsDrawerProps {
     targetOwnerType: OwnershipTargetType,
     targetOwnerId: string,
     selectedEntityLogicalNames: string[],
+    onProgress?: (progress: OwnershipAssignmentProgress) => void,
   ) => Promise<OwnershipAssignmentResult>;
   onOpenChange: (open: boolean) => void;
 }
@@ -75,10 +82,42 @@ const useStyles = makeStyles({
     overflow: "hidden",
   },
   summarySection: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+    gap: tokens.spacingVerticalM,
+    marginBottom: tokens.spacingVerticalL,
+  },
+  statCard: {
     display: "flex",
     flexDirection: "column",
-    gap: tokens.spacingVerticalXXS,
-    marginBottom: tokens.spacingVerticalM,
+    gap: tokens.spacingVerticalS,
+    padding: tokens.spacingVerticalM,
+    borderRadius: tokens.borderRadiusMedium,
+    border: `1px solid ${tokens.colorNeutralStroke2}`,
+    backgroundColor: tokens.colorNeutralBackground1,
+    boxShadow: `0 1px 3px rgba(0, 0, 0, 0.08)`,
+  },
+  statCardHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: tokens.spacingHorizontalS,
+  },
+  statIcon: {
+    fontSize: "24px",
+    display: "flex",
+    alignItems: "center",
+  },
+  statLabel: {
+    fontSize: "12px",
+    color: tokens.colorNeutralForeground3,
+    fontWeight: 500,
+    letterSpacing: "0.5px",
+  },
+  statValue: {
+    fontSize: "32px",
+    fontWeight: 700,
+    color: tokens.colorNeutralForeground1,
+    lineHeight: "1",
   },
   userSection: {
     marginTop: tokens.spacingVerticalS,
@@ -167,28 +206,10 @@ const useStyles = makeStyles({
     flexWrap: "wrap",
   },
   userSelect: {
-    minWidth: "320px",
-    padding: `${tokens.spacingVerticalXS} ${tokens.spacingHorizontalS}`,
-    borderRadius: tokens.borderRadiusMedium,
-    border: `1px solid ${tokens.colorNeutralStroke2}`,
-    "& button": {
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-    },
+    minWidth: "500px",
   },
   dropdownListbox: {
     zIndex: 20,
-    "& [role='option']": {
-      minHeight: "32px",
-      display: "flex",
-      alignItems: "center",
-      paddingTop: tokens.spacingVerticalXS,
-      paddingBottom: tokens.spacingVerticalXS,
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-    },
   },
   assignmentResult: {
     color: tokens.colorNeutralForeground3,
@@ -203,7 +224,8 @@ const useStyles = makeStyles({
   },
   bottomActions: {
     display: "flex",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
+    gap: tokens.spacingHorizontalM,
     marginTop: tokens.spacingVerticalM,
     paddingTop: tokens.spacingVerticalS,
     borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
@@ -241,6 +263,9 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
   >({});
   const [assigningBySource, setAssigningBySource] = useState<
     Record<string, boolean>
+  >({});
+  const [assignmentProgressBySource, setAssignmentProgressBySource] = useState<
+    Record<string, OwnershipAssignmentProgress>
   >({});
   const [assignmentBySource, setAssignmentBySource] = useState<
     Record<string, OwnershipAssignmentResult>
@@ -286,6 +311,18 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
       },
     [allSystemUsers, allTeams, sourceOwnerType],
   );
+
+  useEffect(() => {
+    if (!open) {
+      setTargetTypeBySource({});
+      setTargetIdBySource({});
+      setSelectedEntitiesBySource({});
+      setAssigningBySource({});
+      setAssignmentProgressBySource({});
+      setAssignmentBySource({});
+      setAssignmentHistory([]);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!result) {
@@ -342,6 +379,11 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
         targetType,
         targetId,
         selectedEntities,
+        (progress) =>
+          setAssignmentProgressBySource((current) => ({
+            ...current,
+            [sourceOwnerId]: progress,
+          })),
       );
 
       setAssignmentHistory((current) => [
@@ -437,57 +479,68 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const downloadOwnershipAnalysisSummary = (
-    sourceOwnerId: string,
-    sourceOwnerName: string,
-    entityRows: OwnershipAnalysisResult["users"][number]["entityCounts"],
-  ) => {
-    if (entityRows.length === 0) {
-      return;
-    }
-
-    const csvLines: string[] = [];
-    csvLines.push(
+  const downloadAssignmentErrors = () => {
+    const errorLines: string[] = [];
+    errorLines.push(
       [
-        "Source Owner Type",
-        "Source Owner Id",
-        "Source Owner Name",
+        "Assigned At",
+        "Source Owner",
+        "Target Owner",
         "Entity Display Name",
         "Entity Logical Name",
-        "Record Count",
+        "Record ID",
+        "Error",
       ]
         .map((item) => `"${item}"`)
         .join(","),
     );
 
-    entityRows.forEach((row) => {
-      csvLines.push(
-        [
-          sourceOwnerType,
-          sourceOwnerId,
-          sourceOwnerName,
-          row.entityDisplayName,
-          row.entityLogicalName,
-          String(row.recordCount),
-        ]
-          .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-          .join(","),
+    assignmentHistory.forEach((assignment) => {
+      const sourceOwnerName = resolveOwnerName(
+        assignment.sourceOwnerId,
+        assignment.sourceOwnerType,
       );
+      const targetOwnerName = resolveOwnerName(
+        assignment.targetOwnerId,
+        assignment.targetOwnerType,
+      );
+
+      assignment.entityResults.forEach((entity) => {
+        entity.failedRecordDetails.forEach((detail) => {
+          errorLines.push(
+            [
+              assignment.assignedAt,
+              sourceOwnerName,
+              targetOwnerName,
+              entity.entityDisplayName,
+              entity.entityLogicalName,
+              detail.recordId,
+              detail.error,
+            ]
+              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
+              .join(","),
+          );
+        });
+      });
     });
 
-    const blob = new Blob(["\uFEFF" + csvLines.join("\r\n")], {
+    const blob = new Blob(["\uFEFF" + errorLines.join("\r\n")], {
       type: "text/csv;charset=utf-8;",
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     link.href = url;
-    link.download = `ownership-analysis-summary-${sourceOwnerId}-${timestamp}.csv`;
+    link.download = `ownership-assignment-errors-${timestamp}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
+  const hasAssignmentErrors = assignmentHistory.some((a) =>
+    a.entityResults.some((e) => e.failedRecordDetails.length > 0),
+  );
 
   const downloadCompleteAnalysisSummary = () => {
     if (!result || result.users.length === 0) {
@@ -653,28 +706,49 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
 
         {!isLoading && result && (
           <div className={styles.resultContainer}>
-            {assignmentHistory.length > 0 && (
-              <div className={styles.summaryActions}>
-                <Button
-                  appearance="secondary"
-                  onClick={downloadAssignmentSummary}
-                >
-                  Download Assignment Summary (CSV)
-                </Button>
-              </div>
-            )}
-
             <div className={styles.summarySection}>
-              <Body1>
-                Scanned entities: <strong>{result.scannedEntities}</strong>
-              </Body1>
-              <Body1>
-                Successfully analyzed:{" "}
-                <strong>{result.analyzedEntities}</strong>
-              </Body1>
-              <Body1>
-                Failed entities: <strong>{result.failedEntities}</strong>
-              </Body1>
+              <div className={styles.statCard}>
+                <div className={styles.statCardHeader}>
+                  <div
+                    className={styles.statIcon}
+                    style={{ color: tokens.colorBrandForeground1 }}
+                  >
+                    <DatabaseSearchRegular />
+                  </div>
+                  <span className={styles.statLabel}>Scanned Entities</span>
+                </div>
+                <div className={styles.statValue}>{result.scannedEntities}</div>
+              </div>
+
+              <div className={styles.statCard}>
+                <div className={styles.statCardHeader}>
+                  <div
+                    className={styles.statIcon}
+                    style={{ color: tokens.colorStatusSuccessForeground1 }}
+                  >
+                    <CheckmarkCircleRegular />
+                  </div>
+                  <span className={styles.statLabel}>
+                    Successfully Analyzed
+                  </span>
+                </div>
+                <div className={styles.statValue}>
+                  {result.analyzedEntities}
+                </div>
+              </div>
+
+              <div className={styles.statCard}>
+                <div className={styles.statCardHeader}>
+                  <div
+                    className={styles.statIcon}
+                    style={{ color: tokens.colorStatusDangerForeground1 }}
+                  >
+                    <ErrorCircleRegular />
+                  </div>
+                  <span className={styles.statLabel}>Failed Entities</span>
+                </div>
+                <div className={styles.statValue}>{result.failedEntities}</div>
+              </div>
             </div>
 
             {result.failedEntityDetails.length > 0 && (
@@ -742,9 +816,8 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                     value={userSummary.userId}
                   >
                     <AccordionHeader>
-                      {owner?.userName ?? userSummary.userId} -{" "}
-                      {userSummary.totalOwnedRecords} records in{" "}
-                      {userSummary.entitiesWithRecords} entities
+                      {owner?.userName ?? userSummary.userId}
+                      {owner?.userEmail && ` (${owner.userEmail})`}
                     </AccordionHeader>
                     <AccordionPanel>
                       <section className={styles.userSection}>
@@ -758,6 +831,62 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                             <strong>{userSummary.entitiesWithRecords}</strong>
                           </Body1>
                         </div>
+
+                        <Caption1 className={styles.entitySelectionInfo}>
+                          Selected entities for assignment:{" "}
+                          {selectedEntities.length}
+                        </Caption1>
+
+                        {visibleRows.length === 0 ? (
+                          <Text className={styles.emptyState}>
+                            No owned records found for this owner.
+                          </Text>
+                        ) : (
+                          <div className={styles.tableContainer}>
+                            <DataGrid
+                              items={visibleRows}
+                              columns={entityColumns}
+                              selectionMode="multiselect"
+                              selectedItems={selectedItems}
+                              getRowId={(item) => item.entityLogicalName}
+                              className={styles.dataGrid}
+                              onSelectionChange={(
+                                _e,
+                                data: OnSelectionChangeData,
+                              ) =>
+                                setSelectedEntitiesBySource((current) => ({
+                                  ...current,
+                                  [userSummary.userId]: Array.from(
+                                    data.selectedItems,
+                                  ).map((id) => String(id)),
+                                }))
+                              }
+                            >
+                              <DataGridHeader>
+                                <DataGridRow>
+                                  {({ renderHeaderCell }) => (
+                                    <DataGridHeaderCell
+                                      className={styles.stickyHeaderCell}
+                                    >
+                                      {renderHeaderCell()}
+                                    </DataGridHeaderCell>
+                                  )}
+                                </DataGridRow>
+                              </DataGridHeader>
+                              <DataGridBody>
+                                {({ item, rowId }) => (
+                                  <DataGridRow key={rowId}>
+                                    {({ renderCell }) => (
+                                      <DataGridCell>
+                                        {renderCell(item)}
+                                      </DataGridCell>
+                                    )}
+                                  </DataGridRow>
+                                )}
+                              </DataGridBody>
+                            </DataGrid>
+                          </div>
+                        )}
 
                         <div className={styles.controlRow}>
                           <Dropdown
@@ -847,26 +976,35 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                               ? "Assigning..."
                               : "Assign selected records"}
                           </Button>
-
-                          <Button
-                            appearance="secondary"
-                            disabled={visibleRows.length === 0}
-                            onClick={() =>
-                              downloadOwnershipAnalysisSummary(
-                                userSummary.userId,
-                                owner?.userName ?? userSummary.userId,
-                                visibleRows,
-                              )
-                            }
-                          >
-                            Download Analysis CSV
-                          </Button>
                         </div>
 
-                        <Caption1 className={styles.entitySelectionInfo}>
-                          Selected entities for assignment:{" "}
-                          {selectedEntities.length}
-                        </Caption1>
+                        {assigningBySource[userSummary.userId] &&
+                          (() => {
+                            const ap =
+                              assignmentProgressBySource[userSummary.userId];
+                            const total = ap?.totalRecords ?? 0;
+                            const done =
+                              (ap?.assignedRecords ?? 0) +
+                              (ap?.failedRecords ?? 0);
+                            return (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: tokens.spacingVerticalXS,
+                                }}
+                              >
+                                <ProgressBar
+                                  value={total > 0 ? done / total : undefined}
+                                />
+                                <Caption1>
+                                  {ap
+                                    ? `Assigning records: ${done} / ${total} — ${ap.currentEntity}`
+                                    : "Preparing assignment..."}
+                                </Caption1>
+                              </div>
+                            );
+                          })()}
 
                         {assignment && (
                           <Caption1 className={styles.assignmentResult}>
@@ -874,57 +1012,6 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                             {assignment.reassignedRecords}, failed{" "}
                             {assignment.failedRecords}.
                           </Caption1>
-                        )}
-
-                        {visibleRows.length === 0 ? (
-                          <Text className={styles.emptyState}>
-                            No owned records found for this owner.
-                          </Text>
-                        ) : (
-                          <div className={styles.tableContainer}>
-                            <DataGrid
-                              items={visibleRows}
-                              columns={entityColumns}
-                              selectionMode="multiselect"
-                              selectedItems={selectedItems}
-                              getRowId={(item) => item.entityLogicalName}
-                              className={styles.dataGrid}
-                              onSelectionChange={(
-                                _e,
-                                data: OnSelectionChangeData,
-                              ) =>
-                                setSelectedEntitiesBySource((current) => ({
-                                  ...current,
-                                  [userSummary.userId]: Array.from(
-                                    data.selectedItems,
-                                  ).map((id) => String(id)),
-                                }))
-                              }
-                            >
-                              <DataGridHeader>
-                                <DataGridRow>
-                                  {({ renderHeaderCell }) => (
-                                    <DataGridHeaderCell
-                                      className={styles.stickyHeaderCell}
-                                    >
-                                      {renderHeaderCell()}
-                                    </DataGridHeaderCell>
-                                  )}
-                                </DataGridRow>
-                              </DataGridHeader>
-                              <DataGridBody>
-                                {({ item, rowId }) => (
-                                  <DataGridRow key={rowId}>
-                                    {({ renderCell }) => (
-                                      <DataGridCell>
-                                        {renderCell(item)}
-                                      </DataGridCell>
-                                    )}
-                                  </DataGridRow>
-                                )}
-                              </DataGridBody>
-                            </DataGrid>
-                          </div>
                         )}
                       </section>
                     </AccordionPanel>
@@ -940,6 +1027,26 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
               >
                 Download Complete Analysis CSV
               </Button>
+              {assignmentHistory.length > 0 && (
+                <div
+                  style={{ display: "flex", gap: tokens.spacingHorizontalM }}
+                >
+                  {hasAssignmentErrors && (
+                    <Button
+                      appearance="secondary"
+                      onClick={downloadAssignmentErrors}
+                    >
+                      Download Assignment Errors (CSV)
+                    </Button>
+                  )}
+                  <Button
+                    appearance="secondary"
+                    onClick={downloadAssignmentSummary}
+                  >
+                    Download Assignment Summary (CSV)
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         )}

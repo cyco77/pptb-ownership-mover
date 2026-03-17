@@ -135,23 +135,17 @@ const getEntityDisplayName = (entity: Record<string, unknown>): string => {
 
 const countOwnedRecordsForUser = async (
   entitySetName: string,
+  primaryIdAttribute: string,
   systemUserId: string,
 ): Promise<number> => {
   const sanitizedUserId = systemUserId.replace(/[{}]/g, "");
-  const query = `${entitySetName}?$filter=_ownerid_value eq ${sanitizedUserId}&$count=true&$top=1`;
-  const response = await window.dataverseAPI.queryData(query);
-  const rawCount = (response as Record<string, unknown>)["@odata.count"];
+  const selectClause = primaryIdAttribute
+    ? `$select=${primaryIdAttribute}&`
+    : "";
+  const query = `${entitySetName}?${selectClause}$filter=_ownerid_value eq ${sanitizedUserId}`;
+  const records = await loadAllData(query);
 
-  if (typeof rawCount === "number") {
-    return rawCount;
-  }
-
-  if (typeof rawCount === "string") {
-    const parsed = Number(rawCount);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-
-  return response.value.length;
+  return records.length;
 };
 
 export const loadOwnershipCountsForOwners = async (
@@ -189,7 +183,7 @@ export const loadOwnershipCountsForOwners = async (
   let failedEntities = 0;
   const failedEntityDetails: OwnershipEntityFailure[] = [];
   const recentEntities: OwnershipAnalysisProgress["recentEntities"] = [];
-  const maxParallelEntities = 20;
+  const maxParallelEntities = 10;
 
   const emitProgress = (
     currentEntityLogicalName: string,
@@ -223,10 +217,16 @@ export const loadOwnershipCountsForOwners = async (
 
     emitProgress(logicalName, entityDisplayName);
 
+    const primaryIdAttribute = String(entity.PrimaryIdAttribute ?? "");
+
     const perUserCounts = await Promise.all(
       ownerIds.map(async (userId) => {
         try {
-          const count = await countOwnedRecordsForUser(entitySetName, userId);
+          const count = await countOwnedRecordsForUser(
+            entitySetName,
+            primaryIdAttribute,
+            userId,
+          );
           return { userId, count, success: true, errorMessage: "" };
         } catch (error) {
           const errorMessage = (error as Error).message;
@@ -359,10 +359,17 @@ export const reassignOwnedRecordsForUser = async (
   targetOwnerId: string,
   targetOwnerType: OwnershipTargetType,
   entityCounts: EntityOwnershipCount[],
+  onProgress?: (progress: {
+    assignedRecords: number;
+    failedRecords: number;
+    totalRecords: number;
+    currentEntity: string;
+  }) => void,
 ): Promise<OwnershipAssignmentResult> => {
   const entityResults: OwnershipAssignmentEntityResult[] = [];
   let reassignedRecords = 0;
   let failedRecords = 0;
+  const totalRecords = entityCounts.reduce((sum, e) => sum + e.recordCount, 0);
 
   for (const entity of entityCounts) {
     if (!entity.primaryIdAttribute || !entity.entitySetName) {
@@ -371,6 +378,7 @@ export const reassignOwnedRecordsForUser = async (
 
     let entityReassigned = 0;
     let entityFailed = 0;
+    const entityFailedDetails: Array<{ recordId: string; error: string }> = [];
 
     try {
       const recordIds = await loadOwnedRecordIdsForEntity(
@@ -389,13 +397,27 @@ export const reassignOwnedRecordsForUser = async (
           entityReassigned += 1;
         } catch (error) {
           entityFailed += 1;
+          entityFailedDetails.push({
+            recordId,
+            error: (error as Error).message,
+          });
           logger.warning(
             `Failed to reassign ${entity.entityLogicalName}(${recordId}): ${(error as Error).message}`,
           );
         }
+        onProgress?.({
+          assignedRecords: reassignedRecords + entityReassigned,
+          failedRecords: failedRecords + entityFailed,
+          totalRecords,
+          currentEntity: entity.entityDisplayName,
+        });
       }
     } catch (error) {
       entityFailed += entity.recordCount;
+      entityFailedDetails.push({
+        recordId: "(all)",
+        error: (error as Error).message,
+      });
       logger.warning(
         `Failed to load records for ${entity.entityLogicalName}: ${(error as Error).message}`,
       );
@@ -408,6 +430,7 @@ export const reassignOwnedRecordsForUser = async (
       entityDisplayName: entity.entityDisplayName,
       reassignedRecords: entityReassigned,
       failedRecords: entityFailed,
+      failedRecordDetails: entityFailedDetails,
     });
   }
 
