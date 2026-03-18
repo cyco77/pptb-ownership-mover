@@ -133,6 +133,19 @@ const getEntityDisplayName = (entity: Record<string, unknown>): string => {
   return localized ?? logicalName;
 };
 
+const DATAVERSE_QUERY_ERROR_PREFIX =
+  "Error invoking remote method 'dataverse.queryData':";
+
+const normalizeDataverseErrorMessage = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.startsWith(DATAVERSE_QUERY_ERROR_PREFIX)) {
+    return message.slice(DATAVERSE_QUERY_ERROR_PREFIX.length);
+  }
+
+  return message;
+};
+
 const countOwnedRecordsForUser = async (
   entitySetName: string,
   primaryIdAttribute: string,
@@ -229,7 +242,7 @@ export const loadOwnershipCountsForOwners = async (
           );
           return { userId, count, success: true, errorMessage: "" };
         } catch (error) {
-          const errorMessage = (error as Error).message;
+          const errorMessage = normalizeDataverseErrorMessage(error);
           logger.warning(
             `Skipping ${logicalName} for ${userId}: ${errorMessage}`,
           );
@@ -396,13 +409,14 @@ export const reassignOwnedRecordsForUser = async (
           });
           entityReassigned += 1;
         } catch (error) {
+          const errorMessage = normalizeDataverseErrorMessage(error);
           entityFailed += 1;
           entityFailedDetails.push({
             recordId,
-            error: (error as Error).message,
+            error: errorMessage,
           });
           logger.warning(
-            `Failed to reassign ${entity.entityLogicalName}(${recordId}): ${(error as Error).message}`,
+            `Failed to reassign ${entity.entityLogicalName}(${recordId}): ${errorMessage}`,
           );
         }
         onProgress?.({
@@ -414,12 +428,13 @@ export const reassignOwnedRecordsForUser = async (
       }
     } catch (error) {
       entityFailed += entity.recordCount;
+      const errorMessage = normalizeDataverseErrorMessage(error);
       entityFailedDetails.push({
         recordId: "(all)",
-        error: (error as Error).message,
+        error: errorMessage,
       });
       logger.warning(
-        `Failed to load records for ${entity.entityLogicalName}: ${(error as Error).message}`,
+        `Failed to load records for ${entity.entityLogicalName}: ${errorMessage}`,
       );
     }
 
