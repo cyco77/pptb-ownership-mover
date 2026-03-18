@@ -51,6 +51,7 @@ export type OwnershipAssignmentEntityResult = {
   entityDisplayName: string;
   reassignedRecords: number;
   failedRecords: number;
+  assignedRecordIds: string[];
   failedRecordDetails: Array<{ recordId: string; error: string }>;
 };
 

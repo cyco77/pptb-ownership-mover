@@ -46,6 +46,9 @@ const useStyles = makeStyles({
     textOverflow: "ellipsis",
     maxWidth: "100%",
   },
+  headerCell: {
+    fontWeight: 700,
+  },
 });
 
 export const DataGridView: React.FC<IDataGridViewProps> = ({
@@ -226,7 +229,9 @@ export const DataGridView: React.FC<IDataGridViewProps> = ({
           <DataGridHeader>
             <DataGridRow>
               {({ renderHeaderCell }) => (
-                <DataGridHeaderCell>{renderHeaderCell()}</DataGridHeaderCell>
+                <DataGridHeaderCell className={styles.headerCell}>
+                  {renderHeaderCell()}
+                </DataGridHeaderCell>
               )}
             </DataGridRow>
           </DataGridHeader>
@@ -286,7 +291,9 @@ export const DataGridView: React.FC<IDataGridViewProps> = ({
         <DataGridHeader>
           <DataGridRow>
             {({ renderHeaderCell }) => (
-              <DataGridHeaderCell>{renderHeaderCell()}</DataGridHeaderCell>
+              <DataGridHeaderCell className={styles.headerCell}>
+                {renderHeaderCell()}
+              </DataGridHeaderCell>
             )}
           </DataGridRow>
         </DataGridHeader>

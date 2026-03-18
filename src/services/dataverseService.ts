@@ -366,6 +366,19 @@ const loadOwnedRecordIdsForEntity = async (
     .filter((value): value is string => typeof value === "string");
 };
 
+const chunkArray = <T>(items: T[], chunkSize: number): T[][] => {
+  if (chunkSize <= 0) {
+    return [items];
+  }
+
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+
+  return chunks;
+};
+
 export const reassignOwnedRecordsForUser = async (
   sourceOwnerId: string,
   sourceOwnerType: OwnershipTargetType,
@@ -383,6 +396,10 @@ export const reassignOwnedRecordsForUser = async (
   let reassignedRecords = 0;
   let failedRecords = 0;
   const totalRecords = entityCounts.reduce((sum, e) => sum + e.recordCount, 0);
+  const bulkUpdateChunkSize = 200;
+  const ownerBinding = `/${
+    targetOwnerType === "team" ? "teams" : "systemusers"
+  }(${targetOwnerId.replace(/[{}]/g, "")})`;
 
   for (const entity of entityCounts) {
     if (!entity.primaryIdAttribute || !entity.entitySetName) {
@@ -391,6 +408,7 @@ export const reassignOwnedRecordsForUser = async (
 
     let entityReassigned = 0;
     let entityFailed = 0;
+    const assignedRecordIds: string[] = [];
     const entityFailedDetails: Array<{ recordId: string; error: string }> = [];
 
     try {
@@ -400,25 +418,34 @@ export const reassignOwnedRecordsForUser = async (
         sourceOwnerId,
       );
 
-      for (const recordId of recordIds) {
+      for (const recordIdBatch of chunkArray(recordIds, bulkUpdateChunkSize)) {
+        const updateRecords = recordIdBatch.map((recordId) => ({
+          [entity.primaryIdAttribute]: recordId,
+          "@odata.type": `Microsoft.Dynamics.CRM.${entity.entityLogicalName}`,
+          "ownerid@odata.bind": ownerBinding,
+        }));
+
         try {
-          await window.dataverseAPI.update(entity.entityLogicalName, recordId, {
-            "ownerid@odata.bind": `/${
-              targetOwnerType === "team" ? "teams" : "systemusers"
-            }(${targetOwnerId.replace(/[{}]/g, "")})`,
-          });
-          entityReassigned += 1;
+          await window.dataverseAPI.updateMultiple(
+            entity.entityLogicalName,
+            updateRecords,
+          );
+          entityReassigned += recordIdBatch.length;
+          assignedRecordIds.push(...recordIdBatch);
         } catch (error) {
           const errorMessage = normalizeDataverseErrorMessage(error);
-          entityFailed += 1;
-          entityFailedDetails.push({
-            recordId,
-            error: errorMessage,
+          entityFailed += recordIdBatch.length;
+          recordIdBatch.forEach((recordId) => {
+            entityFailedDetails.push({
+              recordId,
+              error: errorMessage,
+            });
           });
           logger.warning(
-            `Failed to reassign ${entity.entityLogicalName}(${recordId}): ${errorMessage}`,
+            `Failed to bulk reassign ${entity.entityLogicalName} batch (${recordIdBatch.length} records): ${errorMessage}`,
           );
         }
+
         onProgress?.({
           assignedRecords: reassignedRecords + entityReassigned,
           failedRecords: failedRecords + entityFailed,
@@ -445,6 +472,7 @@ export const reassignOwnedRecordsForUser = async (
       entityDisplayName: entity.entityDisplayName,
       reassignedRecords: entityReassigned,
       failedRecords: entityFailed,
+      assignedRecordIds,
       failedRecordDetails: entityFailedDetails,
     });
   }

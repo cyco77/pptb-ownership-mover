@@ -397,7 +397,7 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
             allSystemUsers={systemUsers.map((user) => ({
               userId: user.systemuserid,
               userName: user.fullname,
-              userEmail: user.domainname,
+              domainName: user.domainname,
             }))}
             allTeams={teams.map((team) => ({
               userId: team.teamid,
@@ -410,7 +410,7 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
                   ? (teams.find((team) => team.teamid === id)?.name ?? id)
                   : (systemUsers.find((user) => user.systemuserid === id)
                       ?.fullname ?? id),
-              userEmail:
+              domainName:
                 ownershipSourceType === "systemuser"
                   ? (systemUsers.find((user) => user.systemuserid === id)
                       ?.domainname ?? undefined)

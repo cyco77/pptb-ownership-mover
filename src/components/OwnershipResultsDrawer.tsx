@@ -47,7 +47,7 @@ import {
 type OwnershipOwnerView = {
   userId: string;
   userName: string;
-  userEmail?: string;
+  domainName?: string;
 };
 
 interface IOwnershipResultsDrawerProps {
@@ -198,6 +198,7 @@ const useStyles = makeStyles({
     top: 0,
     zIndex: 2,
     backgroundColor: tokens.colorNeutralBackground1,
+    fontWeight: 700,
   },
   controlRow: {
     display: "flex",
@@ -414,6 +415,19 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
     return pool.find((item) => item.userId === ownerId)?.userName ?? ownerId;
   };
 
+  const resolveOwnerDomainName = (
+    ownerId: string,
+    ownerType: OwnershipTargetType,
+  ): string => {
+    if (ownerType === "team") {
+      return "";
+    }
+
+    return (
+      allSystemUsers.find((item) => item.userId === ownerId)?.domainName ?? ""
+    );
+  };
+
   const downloadAssignmentSummary = () => {
     if (assignmentHistory.length === 0) {
       return;
@@ -425,10 +439,15 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
         "Assigned At",
         "Source Type",
         "Source Owner",
+        "Source Owner Domain Name",
         "Target Type",
         "Target Owner",
+        "Target Owner Domain Name",
         "Entity Display Name",
         "Entity Logical Name",
+        "Assigned Record ID",
+        "Status",
+        "Error",
         "Reassigned Records",
         "Failed Records",
       ]
@@ -441,27 +460,91 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
         assignment.sourceOwnerId,
         assignment.sourceOwnerType,
       );
+      const sourceOwnerDomainName = resolveOwnerDomainName(
+        assignment.sourceOwnerId,
+        assignment.sourceOwnerType,
+      );
       const targetOwnerName = resolveOwnerName(
+        assignment.targetOwnerId,
+        assignment.targetOwnerType,
+      );
+      const targetOwnerDomainName = resolveOwnerDomainName(
         assignment.targetOwnerId,
         assignment.targetOwnerType,
       );
 
       assignment.entityResults.forEach((entity) => {
-        lines.push(
-          [
-            assignment.assignedAt,
-            assignment.sourceOwnerType,
-            sourceOwnerName,
-            assignment.targetOwnerType,
-            targetOwnerName,
-            entity.entityDisplayName,
-            entity.entityLogicalName,
-            String(entity.reassignedRecords),
-            String(entity.failedRecords),
-          ]
-            .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-            .join(","),
-        );
+        entity.assignedRecordIds.forEach((recordId) => {
+          lines.push(
+            [
+              assignment.assignedAt,
+              assignment.sourceOwnerType,
+              sourceOwnerName,
+              sourceOwnerDomainName,
+              assignment.targetOwnerType,
+              targetOwnerName,
+              targetOwnerDomainName,
+              entity.entityDisplayName,
+              entity.entityLogicalName,
+              recordId,
+              "Assigned",
+              "",
+              "1",
+              "0",
+            ]
+              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
+              .join(","),
+          );
+        });
+
+        entity.failedRecordDetails.forEach((detail) => {
+          lines.push(
+            [
+              assignment.assignedAt,
+              assignment.sourceOwnerType,
+              sourceOwnerName,
+              sourceOwnerDomainName,
+              assignment.targetOwnerType,
+              targetOwnerName,
+              targetOwnerDomainName,
+              entity.entityDisplayName,
+              entity.entityLogicalName,
+              detail.recordId,
+              "Failed",
+              detail.error,
+              "0",
+              "1",
+            ]
+              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
+              .join(","),
+          );
+        });
+
+        if (
+          entity.assignedRecordIds.length === 0 &&
+          entity.failedRecordDetails.length === 0
+        ) {
+          lines.push(
+            [
+              assignment.assignedAt,
+              assignment.sourceOwnerType,
+              sourceOwnerName,
+              sourceOwnerDomainName,
+              assignment.targetOwnerType,
+              targetOwnerName,
+              targetOwnerDomainName,
+              entity.entityDisplayName,
+              entity.entityLogicalName,
+              "",
+              "No records",
+              "",
+              String(entity.reassignedRecords),
+              String(entity.failedRecords),
+            ]
+              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
+              .join(","),
+          );
+        }
       });
     });
 
@@ -485,7 +568,9 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
       [
         "Assigned At",
         "Source Owner",
+        "Source Owner Domain Name",
         "Target Owner",
+        "Target Owner Domain Name",
         "Entity Display Name",
         "Entity Logical Name",
         "Record ID",
@@ -500,7 +585,15 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
         assignment.sourceOwnerId,
         assignment.sourceOwnerType,
       );
+      const sourceOwnerDomainName = resolveOwnerDomainName(
+        assignment.sourceOwnerId,
+        assignment.sourceOwnerType,
+      );
       const targetOwnerName = resolveOwnerName(
+        assignment.targetOwnerId,
+        assignment.targetOwnerType,
+      );
+      const targetOwnerDomainName = resolveOwnerDomainName(
         assignment.targetOwnerId,
         assignment.targetOwnerType,
       );
@@ -511,7 +604,9 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
             [
               assignment.assignedAt,
               sourceOwnerName,
+              sourceOwnerDomainName,
               targetOwnerName,
+              targetOwnerDomainName,
               entity.entityDisplayName,
               entity.entityLogicalName,
               detail.recordId,
@@ -553,6 +648,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
         "Source Owner Type",
         "Source Owner Id",
         "Source Owner Name",
+        "Source Owner Domain Name",
         "Total Owned Records",
         "Entities With Records",
         "Entity Display Name",
@@ -567,6 +663,9 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
       const ownerName =
         users.find((user) => user.userId === ownerSummary.userId)?.userName ??
         ownerSummary.userId;
+      const ownerDomainName =
+        users.find((user) => user.userId === ownerSummary.userId)?.domainName ??
+        "";
 
       if (ownerSummary.entityCounts.length === 0) {
         csvLines.push(
@@ -574,6 +673,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
             sourceOwnerType,
             ownerSummary.userId,
             ownerName,
+            ownerDomainName,
             String(ownerSummary.totalOwnedRecords),
             String(ownerSummary.entitiesWithRecords),
             "",
@@ -592,6 +692,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
             sourceOwnerType,
             ownerSummary.userId,
             ownerName,
+            ownerDomainName,
             String(ownerSummary.totalOwnedRecords),
             String(ownerSummary.entitiesWithRecords),
             entity.entityDisplayName,
@@ -803,8 +904,8 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                   )?.userName ?? "";
                 const formatTargetLabel = (candidate: OwnershipOwnerView) => {
                   const isSystemUserTarget = targetType === "systemuser";
-                  if (isSystemUserTarget && candidate.userEmail) {
-                    return `${candidate.userName} (${candidate.userEmail})`;
+                  if (isSystemUserTarget && candidate.domainName) {
+                    return `${candidate.userName} (${candidate.domainName})`;
                   }
                   return candidate.userName;
                 };
@@ -817,7 +918,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                   >
                     <AccordionHeader>
                       {owner?.userName ?? userSummary.userId}
-                      {owner?.userEmail && ` (${owner.userEmail})`}
+                      {owner?.domainName && ` (${owner.domainName})`}
                     </AccordionHeader>
                     <AccordionPanel>
                       <section className={styles.userSection}>
@@ -846,6 +947,11 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                             <DataGrid
                               items={visibleRows}
                               columns={entityColumns}
+                              sortable
+                              defaultSortState={{
+                                sortColumn: "recordCount",
+                                sortDirection: "descending",
+                              }}
                               selectionMode="multiselect"
                               selectedItems={selectedItems}
                               getRowId={(item) => item.entityLogicalName}
