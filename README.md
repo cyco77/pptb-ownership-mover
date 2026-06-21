@@ -1,7 +1,7 @@
 # Ownership Mover
 
 <p align="center">
-  <img src="./icon/user-team-security_logo.png" alt="Ownership Mover logo" width="180" />
+  <img src="./icon/ownership-mover_small.png" alt="Ownership Mover logo" width="180" />
 </p>
 
 <p align="center">
@@ -38,16 +38,6 @@
   - Per-owner analysis summary
   - Complete analysis summary
   - Assignment history summary
-
-## How It Works
-
-1. Load system users and teams from Dataverse.
-2. Select one or more owners in the grid.
-3. Click **Analyze Ownership**.
-4. Review entity counts in the results drawer.
-5. Select entities to process.
-6. Choose a target owner type and target owner.
-7. Click **Assign selected records** to reassign ownership.
 
 ## License
 
