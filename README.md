@@ -1,22 +1,18 @@
 # Ownership Mover
 
-<p align="center">
-  <img src="./icon/ownership-mover_small.png" alt="Ownership Mover logo" width="180" />
-</p>
+![Ownership Mover](https://raw.githubusercontent.com/cyco77/pptb-ownership-mover/main/icon/ownership-mover_small.png)
 
-<p align="center">
-  A Power Platform Toolbox (PPTB) tool to analyze Dataverse record ownership and reassign owned records from users or teams to a new owner.
-</p>
+A Power Platform Toolbox (PPTB) tool to analyze Dataverse record ownership and reassign owned records from users or teams to a new owner.
 
 ## Screenshots
 
 ### Dark Theme
 
-![Ownership Mover - Dark Theme](./screenshots/main_dark.png)
+![Ownership Mover - Dark Theme](https://raw.githubusercontent.com/cyco77/pptb-ownership-mover/main/screenshots/main_dark.png)
 
 ### Light Theme
 
-![Ownership Mover - Light Theme](./screenshots/main_light.png)
+![Ownership Mover - Light Theme](https://raw.githubusercontent.com/cyco77/pptb-ownership-mover/main/screenshots/main_light.png)
 
 ## Features
 
