@@ -35,16 +35,17 @@
   "engines": {
     "node": ">=24.0.0"
   },
+  "packageManager": "pnpm@11.0.0",
   "scripts": {
     "build": "tsc && vite build",
     "dev": "vite",
     "watch": "vite build --watch",
     "preview": "vite preview",
     "changeset": "changeset",
-    "finalize-package": "npm shrinkwrap",
-    "release:version": "changeset version && npm run finalize-package"
+    "release:version": "pnpm changeset version"
   },
   "dependencies": {
+    "@fluentui/react-icons": "^2.0.343",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "@fluentui/react-components": "^9.72.7"
@@ -59,7 +60,6 @@
     "vite": "^8.3.1"
   },
   "files": [
-    "dist",
-    "npm-shrinkwrap.json"
+    "dist"
   ]
 }
