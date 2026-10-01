@@ -45,6 +45,7 @@
     "release:version": "pnpm changeset version"
   },
   "dependencies": {
+    "@fluentui/react-icons": "^2.0.343",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "@fluentui/react-components": "^9.72.7"
