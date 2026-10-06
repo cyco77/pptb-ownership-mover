@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export function useConnection() {
   const [connection, setConnection] =
-    useState<ToolBoxAPI.DataverseConnection | null>(null);
+    useState<ToolBoxAPI.Connection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshConnection = useCallback(async () => {

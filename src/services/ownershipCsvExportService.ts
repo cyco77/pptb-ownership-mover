@@ -147,6 +147,70 @@ export const downloadAssignmentSummaryCsv = ({
   );
 };
 
+export const downloadAssignmentErrorsCsv = ({
+  assignmentHistory,
+  resolveOwnerName,
+  resolveOwnerDomainName,
+}: AssignmentSummaryParams): void => {
+  const lines: string[] = [
+    toCsvLine([
+      "Assigned At",
+      "Source Owner",
+      "Source Owner Domain Name",
+      "Target Owner",
+      "Target Owner Domain Name",
+      "Entity Display Name",
+      "Entity Logical Name",
+      "Record ID",
+      "Error",
+    ]),
+  ];
+
+  assignmentHistory.forEach((assignment) => {
+    const sourceOwnerName = resolveOwnerName(
+      assignment.sourceOwnerId,
+      assignment.sourceOwnerType,
+    );
+    const sourceOwnerDomainName =
+      resolveOwnerDomainName?.(
+        assignment.sourceOwnerId,
+        assignment.sourceOwnerType,
+      ) ?? "";
+    const targetOwnerName = resolveOwnerName(
+      assignment.targetOwnerId,
+      assignment.targetOwnerType,
+    );
+    const targetOwnerDomainName =
+      resolveOwnerDomainName?.(
+        assignment.targetOwnerId,
+        assignment.targetOwnerType,
+      ) ?? "";
+
+    assignment.entityResults.forEach((entity) => {
+      entity.failedRecordDetails.forEach((detail) => {
+        lines.push(
+          toCsvLine([
+            assignment.assignedAt,
+            sourceOwnerName,
+            sourceOwnerDomainName,
+            targetOwnerName,
+            targetOwnerDomainName,
+            entity.entityDisplayName,
+            entity.entityLogicalName,
+            detail.recordId,
+            detail.error,
+          ]),
+        );
+      });
+    });
+  });
+
+  downloadCsv(
+    lines,
+    `ownership-assignment-errors-${createCsvTimestamp()}.csv`,
+  );
+};
+
 type AnalysisSummaryParams = {
   sourceOwnerType: OwnershipTargetType;
   sourceOwnerId: string;

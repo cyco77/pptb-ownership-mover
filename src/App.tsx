@@ -13,7 +13,7 @@ import {
   Title3,
   Text,
 } from "@fluentui/react-components";
-import iconImage from "../icon/ownership-mover_logo.png";
+import iconImage from "../icon/ownership-mover_small.png";
 
 const useStyles = makeStyles({
   container: {

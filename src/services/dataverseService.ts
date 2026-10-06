@@ -11,6 +11,14 @@ import {
   UserOwnershipSummary,
 } from "../types/ownership";
 import { logger } from "./loggerService";
+import {
+  buildOwnedRecordsQuery,
+  chunkArray,
+  getEntityDisplayName,
+  isUserAssignableEntity,
+  normalizeDataverseErrorMessage,
+  sanitizeGuid,
+} from "./dataverseUtils";
 
 export const loadSystemUsers = async (): Promise<SystemUser[]> => {
   let url =
@@ -83,79 +91,16 @@ const loadAllData = async (fullUrl: string) => {
   return allRecords;
 };
 
-const normalizeOwnershipType = (value: unknown): string => {
-  if (typeof value === "string") {
-    return value.toLowerCase();
-  }
-
-  if (typeof value === "number") {
-    return String(value);
-  }
-
-  if (value && typeof value === "object") {
-    const typedValue = value as Record<string, unknown>;
-    const candidate = typedValue.Value;
-    if (typeof candidate === "number") {
-      return String(candidate);
-    }
-
-    if (typeof candidate === "string") {
-      return candidate.toLowerCase();
-    }
-  }
-
-  return "";
-};
-
-const isUserAssignableEntity = (entity: Record<string, unknown>): boolean => {
-  const ownershipType = normalizeOwnershipType(entity.OwnershipType);
-
-  return (
-    ownershipType.includes("userowned") ||
-    ownershipType.includes("teamowned") ||
-    ownershipType === "0" ||
-    ownershipType === "4"
-  );
-};
-
-const getEntityDisplayName = (entity: Record<string, unknown>): string => {
-  const logicalName = String(entity.LogicalName ?? "");
-  const displayName = entity.DisplayName as
-    | {
-        LocalizedLabels?: Array<{ Label?: string }>;
-      }
-    | undefined;
-
-  const localized = displayName?.LocalizedLabels?.find(
-    (label) => !!label.Label,
-  )?.Label;
-
-  return localized ?? logicalName;
-};
-
-const DATAVERSE_QUERY_ERROR_PREFIX =
-  "Error invoking remote method 'dataverse.queryData':";
-
-const normalizeDataverseErrorMessage = (error: unknown): string => {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (message.startsWith(DATAVERSE_QUERY_ERROR_PREFIX)) {
-    return message.slice(DATAVERSE_QUERY_ERROR_PREFIX.length);
-  }
-
-  return message;
-};
-
 const countOwnedRecordsForUser = async (
   entitySetName: string,
   primaryIdAttribute: string,
   systemUserId: string,
 ): Promise<number> => {
-  const sanitizedUserId = systemUserId.replace(/[{}]/g, "");
-  const selectClause = primaryIdAttribute
-    ? `$select=${primaryIdAttribute}&`
-    : "";
-  const query = `${entitySetName}?${selectClause}$filter=_ownerid_value eq ${sanitizedUserId}`;
+  const query = buildOwnedRecordsQuery(
+    entitySetName,
+    primaryIdAttribute,
+    systemUserId,
+  );
   const records = await loadAllData(query);
 
   return records.length;
@@ -357,26 +302,16 @@ const loadOwnedRecordIdsForEntity = async (
   primaryIdAttribute: string,
   systemUserId: string,
 ): Promise<string[]> => {
-  const sanitizedUserId = systemUserId.replace(/[{}]/g, "");
-  const query = `${entitySetName}?$select=${primaryIdAttribute}&$filter=_ownerid_value eq ${sanitizedUserId}`;
+  const query = buildOwnedRecordsQuery(
+    entitySetName,
+    primaryIdAttribute,
+    systemUserId,
+  );
   const records = await loadAllData(query);
 
   return records
     .map((record: Record<string, unknown>) => record[primaryIdAttribute])
     .filter((value): value is string => typeof value === "string");
-};
-
-const chunkArray = <T>(items: T[], chunkSize: number): T[][] => {
-  if (chunkSize <= 0) {
-    return [items];
-  }
-
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += chunkSize) {
-    chunks.push(items.slice(index, index + chunkSize));
-  }
-
-  return chunks;
 };
 
 export const reassignOwnedRecordsForUser = async (
@@ -400,7 +335,7 @@ export const reassignOwnedRecordsForUser = async (
   const maxParallelBatchWorkers = 5;
   const ownerBinding = `/${
     targetOwnerType === "team" ? "teams" : "systemusers"
-  }(${targetOwnerId.replace(/[{}]/g, "")})`;
+  }(${sanitizeGuid(targetOwnerId)})`;
 
   for (const entity of entityCounts) {
     if (!entity.primaryIdAttribute || !entity.entitySetName) {
