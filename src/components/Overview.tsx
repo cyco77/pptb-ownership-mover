@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   loadSystemUsers,
   loadTeams,
@@ -18,10 +18,60 @@ import { DataGridView } from "./DataGridView";
 import { makeStyles, Spinner, Text, Button } from "@fluentui/react-components";
 import { logger } from "../services/loggerService";
 import { OwnershipResultsDrawer } from "./OwnershipResultsDrawer";
+import { filterSystemUsers, filterTeams } from "../utils/ownerFilters";
 
 interface IOverviewProps {
-  connection: ToolBoxAPI.DataverseConnection | null;
+  connection: ToolBoxAPI.Connection | null;
 }
+
+const useStyles = makeStyles({
+  overviewRoot: {
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+    overflow: "hidden",
+  },
+  filterSection: {
+    flexShrink: 0,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    gap: "16px",
+  },
+  buttonContainer: {
+    display: "flex",
+    gap: "8px",
+    alignItems: "flex-end",
+  },
+  loadingContainer: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "40px",
+    flexDirection: "column",
+    gap: "16px",
+  },
+  dataSection: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "row",
+    overflow: "hidden",
+    minHeight: 0,
+    gap: "0px",
+  },
+  gridSection: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    minHeight: 0,
+  },
+  gridSectionDisabled: {
+    pointerEvents: "none",
+    userSelect: "none",
+  },
+});
 
 export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
@@ -48,55 +98,6 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
     useState<OwnershipAnalysisResult | null>(null);
   const [ownershipProgress, setOwnershipProgress] =
     useState<OwnershipAnalysisProgress | null>(null);
-
-  const useStyles = makeStyles({
-    overviewRoot: {
-      height: "100%",
-      display: "flex",
-      flexDirection: "column",
-      gap: "16px",
-      overflow: "hidden",
-    },
-    filterSection: {
-      flexShrink: 0,
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "flex-end",
-      gap: "16px",
-    },
-    buttonContainer: {
-      display: "flex",
-      gap: "8px",
-      alignItems: "flex-end",
-    },
-    loadingContainer: {
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: "40px",
-      flexDirection: "column",
-      gap: "16px",
-    },
-    dataSection: {
-      flex: 1,
-      display: "flex",
-      flexDirection: "row",
-      overflow: "hidden",
-      minHeight: 0,
-      gap: "0px",
-    },
-    gridSection: {
-      flex: 1,
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",
-      minHeight: 0,
-    },
-    gridSectionDisabled: {
-      pointerEvents: "none",
-      userSelect: "none",
-    },
-  });
 
   const styles = useStyles();
 
@@ -220,82 +221,17 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
     [ownershipResult, ownershipSourceIds, ownershipSourceType],
   );
 
-  const filteredSystemUsers = useMemo(() => {
-    let result = systemUsers;
+  const filteredSystemUsers = filterSystemUsers(systemUsers, {
+    status: statusFilter,
+    userType: userTypeFilter,
+    businessUnitId: businessUnitFilter,
+    text: textFilter,
+  });
 
-    // Apply status filter
-    if (statusFilter !== "all") {
-      result = result.filter((user) => {
-        if (statusFilter === "enabled") {
-          return !user.isdisabled;
-        } else {
-          return user.isdisabled;
-        }
-      });
-    }
-
-    // Apply user type filter
-    if (userTypeFilter !== "all") {
-      result = result.filter((user) => {
-        if (userTypeFilter === "users") {
-          return !user.applicationid; // Regular users have no applicationid
-        } else {
-          return !!user.applicationid; // Application users have applicationid
-        }
-      });
-    }
-
-    // Apply business unit filter
-    if (businessUnitFilter !== "all") {
-      result = result.filter(
-        (user) => user.businessunitid?.businessunitid === businessUnitFilter,
-      );
-    }
-
-    // Apply text filter
-    if (textFilter) {
-      const searchTerm = textFilter.toLowerCase();
-      result = result.filter((user) => {
-        return (
-          user.fullname?.toLowerCase().includes(searchTerm) ||
-          user.domainname?.toLowerCase().includes(searchTerm) ||
-          user.businessunitid?.name?.toLowerCase().includes(searchTerm)
-        );
-      });
-    }
-
-    return result;
-  }, [
-    systemUsers,
-    textFilter,
-    statusFilter,
-    userTypeFilter,
-    businessUnitFilter,
-  ]);
-
-  const filteredTeams = useMemo(() => {
-    let result = teams;
-
-    // Apply business unit filter
-    if (businessUnitFilter !== "all") {
-      result = result.filter(
-        (team) => team.businessunitid?.businessunitid === businessUnitFilter,
-      );
-    }
-
-    // Apply text filter
-    if (textFilter) {
-      const searchTerm = textFilter.toLowerCase();
-      result = result.filter((team) => {
-        return (
-          team.name?.toLowerCase().includes(searchTerm) ||
-          team.businessunitid?.name?.toLowerCase().includes(searchTerm)
-        );
-      });
-    }
-
-    return result;
-  }, [teams, textFilter, businessUnitFilter]);
+  const filteredTeams = filterTeams(teams, {
+    businessUnitId: businessUnitFilter,
+    text: textFilter,
+  });
 
   return (
     <div className={styles.overviewRoot}>
@@ -398,6 +334,8 @@ export const Overview: React.FC<IOverviewProps> = ({ connection }) => {
               userId: user.systemuserid,
               userName: user.fullname,
               domainName: user.domainname,
+              isApplication: !!user.applicationid,
+              isDisabled: user.isdisabled,
             }))}
             allTeams={teams.map((team) => ({
               userId: team.teamid,
