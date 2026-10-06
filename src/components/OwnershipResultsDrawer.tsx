@@ -4,6 +4,7 @@ import {
   AccordionHeader,
   AccordionItem,
   AccordionPanel,
+  Badge,
   Body1,
   Button,
   Caption1,
@@ -43,11 +44,21 @@ import {
   OwnershipAssignmentProgress,
   OwnershipTargetType,
 } from "../types/ownership";
+import {
+  downloadAssignmentErrorsCsv,
+  downloadAssignmentSummaryCsv,
+  downloadCompleteOwnershipAnalysisCsv,
+  type OwnershipAssignmentHistoryEntry,
+} from "../services/ownershipCsvExportService";
+
+type OwnershipTargetSelection = "user" | "application" | "team";
 
 type OwnershipOwnerView = {
   userId: string;
   userName: string;
   domainName?: string;
+  isApplication?: boolean;
+  isDisabled?: boolean;
 };
 
 interface IOwnershipResultsDrawerProps {
@@ -212,6 +223,26 @@ const useStyles = makeStyles({
   dropdownListbox: {
     zIndex: 20,
   },
+  targetDropdownListbox: {
+    zIndex: 20,
+    width: "max-content",
+    minWidth: "min(360px, calc(100vw - 32px))",
+    maxWidth: "min(640px, calc(100vw - 32px))",
+  },
+  targetOption: {
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+    minWidth: 0,
+    gap: tokens.spacingHorizontalM,
+  },
+  targetOptionName: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   assignmentResult: {
     color: tokens.colorNeutralForeground3,
   },
@@ -254,7 +285,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
 }) => {
   const styles = useStyles();
   const [targetTypeBySource, setTargetTypeBySource] = useState<
-    Record<string, OwnershipTargetType>
+    Record<string, OwnershipTargetSelection>
   >({});
   const [targetIdBySource, setTargetIdBySource] = useState<
     Record<string, string>
@@ -268,11 +299,14 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
   const [assignmentProgressBySource, setAssignmentProgressBySource] = useState<
     Record<string, OwnershipAssignmentProgress>
   >({});
+  const [assignmentErrorBySource, setAssignmentErrorBySource] = useState<
+    Record<string, string>
+  >({});
   const [assignmentBySource, setAssignmentBySource] = useState<
     Record<string, OwnershipAssignmentResult>
   >({});
   const [assignmentHistory, setAssignmentHistory] = useState<
-    Array<OwnershipAssignmentResult & { assignedAt: string }>
+    OwnershipAssignmentHistoryEntry[]
   >([]);
 
   const entityColumns: TableColumnDefinition<
@@ -301,11 +335,18 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
   const getTargetsByType = useMemo(
     () =>
       (
-        targetType: OwnershipTargetType,
+        targetType: OwnershipTargetSelection,
         sourceOwnerId: string,
       ): OwnershipOwnerView[] => {
-        const pool = targetType === "team" ? allTeams : allSystemUsers;
-        if (targetType === sourceOwnerType) {
+        const pool =
+          targetType === "team"
+            ? allTeams
+            : allSystemUsers.filter(
+                (candidate) => candidate.isApplication === (targetType === "application"),
+              );
+        const targetOwnerType: OwnershipTargetType =
+          targetType === "team" ? "team" : "systemuser";
+        if (targetOwnerType === sourceOwnerType) {
           return pool.filter((candidate) => candidate.userId !== sourceOwnerId);
         }
         return pool;
@@ -320,6 +361,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
       setSelectedEntitiesBySource({});
       setAssigningBySource({});
       setAssignmentProgressBySource({});
+      setAssignmentErrorBySource({});
       setAssignmentBySource({});
       setAssignmentHistory([]);
     }
@@ -330,7 +372,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
       return;
     }
 
-    const defaultTypes: Record<string, OwnershipTargetType> = {};
+    const defaultTypes: Record<string, OwnershipTargetSelection> = {};
     const defaultIds: Record<string, string> = {};
     const defaultSelections: Record<string, string[]> = {};
 
@@ -340,7 +382,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
         (entry) => entry.entityLogicalName,
       );
 
-      const preferredType: OwnershipTargetType = "systemuser";
+      const preferredType: OwnershipTargetSelection = "user";
       defaultTypes[ownerId] = preferredType;
       defaultIds[ownerId] =
         getTargetsByType(preferredType, ownerId)[0]?.userId ?? "";
@@ -361,7 +403,9 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
   }, [result, sourceOwnerType, getTargetsByType]);
 
   const handleAssignAll = async (sourceOwnerId: string) => {
-    const targetType = targetTypeBySource[sourceOwnerId] ?? "systemuser";
+    const targetSelection = targetTypeBySource[sourceOwnerId] ?? "user";
+    const targetType: OwnershipTargetType =
+      targetSelection === "team" ? "team" : "systemuser";
     const targetId = targetIdBySource[sourceOwnerId] ?? "";
     const selectedEntities = selectedEntitiesBySource[sourceOwnerId] ?? [];
 
@@ -372,6 +416,10 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
     setAssigningBySource((current) => ({
       ...current,
       [sourceOwnerId]: true,
+    }));
+    setAssignmentErrorBySource((current) => ({
+      ...current,
+      [sourceOwnerId]: "",
     }));
 
     try {
@@ -398,6 +446,12 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
       setAssignmentBySource((current) => ({
         ...current,
         [sourceOwnerId]: assignmentResult,
+      }));
+    } catch (error) {
+      setAssignmentErrorBySource((current) => ({
+        ...current,
+        [sourceOwnerId]:
+          error instanceof Error ? error.message : String(error),
       }));
     } finally {
       setAssigningBySource((current) => ({
@@ -428,296 +482,30 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
     );
   };
 
-  const downloadAssignmentSummary = () => {
-    if (assignmentHistory.length === 0) {
-      return;
-    }
-
-    const lines: string[] = [];
-    lines.push(
-      [
-        "Assigned At",
-        "Source Type",
-        "Source Owner",
-        "Source Owner Domain Name",
-        "Target Type",
-        "Target Owner",
-        "Target Owner Domain Name",
-        "Entity Display Name",
-        "Entity Logical Name",
-        "Assigned Record ID",
-        "Status",
-        "Error",
-        "Reassigned Records",
-        "Failed Records",
-      ]
-        .map((item) => `"${item}"`)
-        .join(","),
-    );
-
-    assignmentHistory.forEach((assignment) => {
-      const sourceOwnerName = resolveOwnerName(
-        assignment.sourceOwnerId,
-        assignment.sourceOwnerType,
-      );
-      const sourceOwnerDomainName = resolveOwnerDomainName(
-        assignment.sourceOwnerId,
-        assignment.sourceOwnerType,
-      );
-      const targetOwnerName = resolveOwnerName(
-        assignment.targetOwnerId,
-        assignment.targetOwnerType,
-      );
-      const targetOwnerDomainName = resolveOwnerDomainName(
-        assignment.targetOwnerId,
-        assignment.targetOwnerType,
-      );
-
-      assignment.entityResults.forEach((entity) => {
-        entity.assignedRecordIds.forEach((recordId) => {
-          lines.push(
-            [
-              assignment.assignedAt,
-              assignment.sourceOwnerType,
-              sourceOwnerName,
-              sourceOwnerDomainName,
-              assignment.targetOwnerType,
-              targetOwnerName,
-              targetOwnerDomainName,
-              entity.entityDisplayName,
-              entity.entityLogicalName,
-              recordId,
-              "Assigned",
-              "",
-              "1",
-              "0",
-            ]
-              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-              .join(","),
-          );
-        });
-
-        entity.failedRecordDetails.forEach((detail) => {
-          lines.push(
-            [
-              assignment.assignedAt,
-              assignment.sourceOwnerType,
-              sourceOwnerName,
-              sourceOwnerDomainName,
-              assignment.targetOwnerType,
-              targetOwnerName,
-              targetOwnerDomainName,
-              entity.entityDisplayName,
-              entity.entityLogicalName,
-              detail.recordId,
-              "Failed",
-              detail.error,
-              "0",
-              "1",
-            ]
-              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-              .join(","),
-          );
-        });
-
-        if (
-          entity.assignedRecordIds.length === 0 &&
-          entity.failedRecordDetails.length === 0
-        ) {
-          lines.push(
-            [
-              assignment.assignedAt,
-              assignment.sourceOwnerType,
-              sourceOwnerName,
-              sourceOwnerDomainName,
-              assignment.targetOwnerType,
-              targetOwnerName,
-              targetOwnerDomainName,
-              entity.entityDisplayName,
-              entity.entityLogicalName,
-              "",
-              "No records",
-              "",
-              String(entity.reassignedRecords),
-              String(entity.failedRecords),
-            ]
-              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-              .join(","),
-          );
-        }
-      });
-    });
-
-    const blob = new Blob(["\uFEFF" + lines.join("\r\n")], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    link.href = url;
-    link.download = `ownership-assignment-summary-${timestamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const downloadAssignmentErrors = () => {
-    const errorLines: string[] = [];
-    errorLines.push(
-      [
-        "Assigned At",
-        "Source Owner",
-        "Source Owner Domain Name",
-        "Target Owner",
-        "Target Owner Domain Name",
-        "Entity Display Name",
-        "Entity Logical Name",
-        "Record ID",
-        "Error",
-      ]
-        .map((item) => `"${item}"`)
-        .join(","),
-    );
-
-    assignmentHistory.forEach((assignment) => {
-      const sourceOwnerName = resolveOwnerName(
-        assignment.sourceOwnerId,
-        assignment.sourceOwnerType,
-      );
-      const sourceOwnerDomainName = resolveOwnerDomainName(
-        assignment.sourceOwnerId,
-        assignment.sourceOwnerType,
-      );
-      const targetOwnerName = resolveOwnerName(
-        assignment.targetOwnerId,
-        assignment.targetOwnerType,
-      );
-      const targetOwnerDomainName = resolveOwnerDomainName(
-        assignment.targetOwnerId,
-        assignment.targetOwnerType,
-      );
-
-      assignment.entityResults.forEach((entity) => {
-        entity.failedRecordDetails.forEach((detail) => {
-          errorLines.push(
-            [
-              assignment.assignedAt,
-              sourceOwnerName,
-              sourceOwnerDomainName,
-              targetOwnerName,
-              targetOwnerDomainName,
-              entity.entityDisplayName,
-              entity.entityLogicalName,
-              detail.recordId,
-              detail.error,
-            ]
-              .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-              .join(","),
-          );
-        });
-      });
-    });
-
-    const blob = new Blob(["\uFEFF" + errorLines.join("\r\n")], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    link.href = url;
-    link.download = `ownership-assignment-errors-${timestamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const hasAssignmentErrors = assignmentHistory.some((a) =>
     a.entityResults.some((e) => e.failedRecordDetails.length > 0),
   );
 
-  const downloadCompleteAnalysisSummary = () => {
-    if (!result || result.users.length === 0) {
-      return;
-    }
-
-    const csvLines: string[] = [];
-    csvLines.push(
-      [
-        "Source Owner Type",
-        "Source Owner Id",
-        "Source Owner Name",
-        "Source Owner Domain Name",
-        "Total Owned Records",
-        "Entities With Records",
-        "Entity Display Name",
-        "Entity Logical Name",
-        "Record Count",
-      ]
-        .map((item) => `"${item}"`)
-        .join(","),
-    );
-
-    result.users.forEach((ownerSummary) => {
-      const ownerName =
-        users.find((user) => user.userId === ownerSummary.userId)?.userName ??
-        ownerSummary.userId;
-      const ownerDomainName =
-        users.find((user) => user.userId === ownerSummary.userId)?.domainName ??
-        "";
-
-      if (ownerSummary.entityCounts.length === 0) {
-        csvLines.push(
-          [
-            sourceOwnerType,
-            ownerSummary.userId,
-            ownerName,
-            ownerDomainName,
-            String(ownerSummary.totalOwnedRecords),
-            String(ownerSummary.entitiesWithRecords),
-            "",
-            "",
-            "0",
-          ]
-            .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-            .join(","),
-        );
-        return;
-      }
-
-      ownerSummary.entityCounts.forEach((entity) => {
-        csvLines.push(
-          [
-            sourceOwnerType,
-            ownerSummary.userId,
-            ownerName,
-            ownerDomainName,
-            String(ownerSummary.totalOwnedRecords),
-            String(ownerSummary.entitiesWithRecords),
-            entity.entityDisplayName,
-            entity.entityLogicalName,
-            String(entity.recordCount),
-          ]
-            .map((item) => `"${String(item).replace(/"/g, '""')}"`)
-            .join(","),
-        );
-      });
+  const downloadAssignmentSummary = () =>
+    downloadAssignmentSummaryCsv({
+      assignmentHistory,
+      resolveOwnerName,
+      resolveOwnerDomainName,
     });
 
-    const blob = new Blob(["\uFEFF" + csvLines.join("\r\n")], {
-      type: "text/csv;charset=utf-8;",
+  const downloadAssignmentErrors = () =>
+    downloadAssignmentErrorsCsv({
+      assignmentHistory,
+      resolveOwnerName,
+      resolveOwnerDomainName,
     });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    link.href = url;
-    link.download = `ownership-complete-analysis-${timestamp}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
+
+  const downloadCompleteAnalysisSummary = () =>
+    downloadCompleteOwnershipAnalysisCsv({
+      result,
+      users,
+      sourceOwnerType,
+    });
 
   return (
     <OverlayDrawer
@@ -891,7 +679,7 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                   selectedEntitiesBySource[userSummary.userId] ?? [];
                 const selectedItems = new Set<string>(selectedEntities);
                 const targetType =
-                  targetTypeBySource[userSummary.userId] ?? "systemuser";
+                  targetTypeBySource[userSummary.userId] ?? "user";
                 const targetCandidates = getTargetsByType(
                   targetType,
                   userSummary.userId,
@@ -903,11 +691,14 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                     (candidate) => candidate.userId === targetOwnerId,
                   )?.userName ?? "";
                 const formatTargetLabel = (candidate: OwnershipOwnerView) => {
-                  const isSystemUserTarget = targetType === "systemuser";
-                  if (isSystemUserTarget && candidate.domainName) {
-                    return `${candidate.userName} (${candidate.domainName})`;
-                  }
-                  return candidate.userName;
+                  const details = [
+                    targetType === "application"
+                      ? "Application"
+                      : candidate.domainName,
+                  ].filter(Boolean);
+                  return details.length > 0
+                    ? `${candidate.userName} (${details.join(", ")})`
+                    : candidate.userName;
                 };
                 const assignment = assignmentBySource[userSummary.userId];
 
@@ -1002,15 +793,18 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                             value={
                               targetType === "team"
                                 ? "Target: Team"
-                                : "Target: User"
+                                : targetType === "application"
+                                  ? "Target: Application"
+                                  : "Target: User"
                             }
                             selectedOptions={[targetType]}
                             onOptionSelect={(
                               _event: SelectionEvents,
                               data: OptionOnSelectData,
                             ) => {
-                              const nextType =
-                                data.optionValue as OwnershipTargetType;
+                              const nextType = data.optionValue as
+                                | OwnershipTargetSelection
+                                | undefined;
                               if (!nextType) {
                                 return;
                               }
@@ -1029,8 +823,14 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                               }));
                             }}
                           >
-                            <Option value="systemuser" text="Target: User">
+                            <Option value="user" text="Target: User">
                               Target: User
+                            </Option>
+                            <Option
+                              value="application"
+                              text="Target: Application"
+                            >
+                              Target: Application
                             </Option>
                             <Option value="team" text="Target: Team">
                               Target: Team
@@ -1040,7 +840,13 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                           <Dropdown
                             className={styles.userSelect}
                             inlinePopup
-                            listbox={{ className: styles.dropdownListbox }}
+                            positioning={{
+                              matchTargetSize: undefined,
+                              autoSize: "width",
+                            }}
+                            listbox={{
+                              className: styles.targetDropdownListbox,
+                            }}
                             placeholder="Select target"
                             value={selectedTargetOwnerName}
                             selectedOptions={
@@ -1062,7 +868,26 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                                 value={candidate.userId}
                                 text={formatTargetLabel(candidate)}
                               >
-                                {formatTargetLabel(candidate)}
+                                <span className={styles.targetOption}>
+                                  <span className={styles.targetOptionName}>
+                                    {formatTargetLabel(candidate)}
+                                  </span>
+                                  {candidate.isDisabled !== undefined && (
+                                    <Badge
+                                      appearance="tint"
+                                      color={
+                                        candidate.isDisabled
+                                          ? "danger"
+                                          : "success"
+                                      }
+                                      size="small"
+                                    >
+                                      {candidate.isDisabled
+                                        ? "Inactive"
+                                        : "Active"}
+                                    </Badge>
+                                  )}
+                                </span>
                               </Option>
                             ))}
                           </Dropdown>
@@ -1117,6 +942,11 @@ export const OwnershipResultsDrawer: React.FC<IOwnershipResultsDrawerProps> = ({
                             Last assignment result: reassigned{" "}
                             {assignment.reassignedRecords}, failed{" "}
                             {assignment.failedRecords}.
+                          </Caption1>
+                        )}
+                        {assignmentErrorBySource[userSummary.userId] && (
+                          <Caption1 role="alert">
+                            Assignment failed: {assignmentErrorBySource[userSummary.userId]}
                           </Caption1>
                         )}
                       </section>
